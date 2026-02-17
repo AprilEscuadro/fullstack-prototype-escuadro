@@ -10,31 +10,23 @@
 
 /* ============================================
    Body Classes for Authentication States
+   (guide-required CSS rules)
    ============================================ */
 
-/* Hide logged-in elements by default */
-.logged-in-only {
-    display: none !important;
-}
+.page { display: none; }
+.page.active { display: block; }
 
-/* When authenticated, show logged-in elements and hide logged-out elements */
-body.authenticated .logged-in-only {
-    display: block !important;
-}
+/* Hide logged-in elements when not authenticated */
+body.not-authenticated .role-logged-in { display: none; }
 
-body.authenticated .logged-out-only {
-    display: none !important;
-}
+/* Hide logged-out elements when authenticated */
+body.authenticated .role-logged-out { display: none; }
 
 /* Admin-only elements are hidden by default */
-.admin-only {
-    display: none !important;
-}
+.role-admin { display: none; }
 
-/* Show admin elements only when role-admin class is on body */
-body.is-admin .admin-only {
-    display: block !important;
-}
+/* Show admin elements only when is-admin class is on body */
+body.is-admin .role-admin { display: block; }
 
 /* ============================================
    Navbar Enhancements

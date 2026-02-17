@@ -178,8 +178,9 @@ function login(email, password) {
 
 function logout() {
     localStorage.removeItem('auth_token');
-    window.location.hash = '#/';
-    updateNavigation();
+    // Use setAuthState to clear auth, then navigate home
+    setAuthState(false, null);
+    navigateTo('#/');
 }
 
 function register(firstName, lastName, email, password) {
@@ -222,7 +223,7 @@ function verifyEmail(email) {
 
 function requireAuth() {
     if (!isAuthenticated()) {
-        window.location.hash = '#/login';
+        navigateTo('#/login');
         return false;
     }
     return true;
@@ -233,96 +234,60 @@ function requireAdmin() {
     
     if (!isAdmin()) {
         showToast('Access denied. Admin privileges required.', 'danger');
-        window.location.hash = '#/';
+        navigateTo('#/');
         return false;
     }
     return true;
 }
 
-function updateNavigation() {
-    const authenticated = isAuthenticated();
-    const admin = isAdmin();
-    const user = getCurrentUser();
-    
+// ============================================
+// Auth State Management (guide: setAuthState)
+// ============================================
+
+function setAuthState(isAuth, user) {
     // Update body classes
     document.body.classList.remove('authenticated', 'not-authenticated', 'is-admin');
     
-    if (authenticated) {
+    if (isAuth && user) {
         document.body.classList.add('authenticated');
-        if (admin) {
+        if (user.role === 'admin') {
             document.body.classList.add('is-admin');
         }
-        
         // Update user name in navigation
-        if (user) {
-            const userName = user.firstName; // First name only
-            document.querySelectorAll('.user-name').forEach(el => {
-                el.textContent = userName;
-            });
-        }
+        document.querySelectorAll('.user-name').forEach(el => {
+            el.textContent = user.firstName;
+        });
     } else {
         document.body.classList.add('not-authenticated');
     }
 }
 
 // ============================================
-// Utility Functions
+// Client-Side Routing (guide: navigateTo + handleRouting)
 // ============================================
 
-function showToast(message, type = 'info') {
-    const toastHtml = `
-        <div class="toast align-items-center text-white bg-${type} border-0" role="alert" aria-live="assertive" aria-atomic="true">
-            <div class="d-flex">
-                <div class="toast-body">${message}</div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-            </div>
-        </div>
-    `;
-    
-    let container = document.querySelector('.toast-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.className = 'toast-container position-fixed top-0 end-0 p-3';
-        container.style.zIndex = '9999';
-        document.body.appendChild(container);
-    }
-    
-    container.insertAdjacentHTML('beforeend', toastHtml);
-    const toastElement = container.lastElementChild;
-    const toast = new bootstrap.Toast(toastElement);
-    toast.show();
-    
-    toastElement.addEventListener('hidden.bs.toast', function() {
-        toastElement.remove();
-    });
-}
+// Global current user variable as required by guide
+let currentUser = null;
 
-function isValidEmail(email) {
-    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return re.test(email);
+function navigateTo(hash) {
+    window.location.hash = hash;
 }
-
-function formatDate(dateString) {
-    if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-    });
-}
-
-// ============================================
-// Router - Hash-based routing
-// ============================================
 
 function handleRouting() {
     const hash = window.location.hash.slice(1) || '/';
+    
+    // Refresh currentUser on every route change
+    currentUser = getCurrentUser();
+
+    // Update auth state visuals on every route change
+    setAuthState(isAuthenticated(), currentUser);
+
     const routes = {
         '/': renderHome,
         '/login': renderLogin,
         '/register': renderRegister,
         '/verify': renderVerify,
+        '/verify-email': renderVerify,
         '/profile': () => requireAuth() && renderProfile(),
         '/requests': () => requireAuth() && renderRequests(),
         '/employees': () => requireAdmin() && renderEmployees(),
@@ -332,7 +297,6 @@ function handleRouting() {
     
     const route = routes[hash] || renderHome;
     route();
-    updateNavigation();
 }
 
 // ============================================
@@ -440,10 +404,12 @@ function renderLogin() {
         const result = login(email, password);
         
         if (result.success) {
+            // Update currentUser and auth state immediately after login
+            currentUser = result.user;
+            setAuthState(true, result.user);
             showToast('Login successful!', 'success');
             setTimeout(() => {
-                window.location.hash = '#/profile';
-                // updateNavigation will be called by handleRouting
+                navigateTo('#/profile');
             }, 500);
         } else {
             showToast(result.message, 'danger');
@@ -525,7 +491,7 @@ function renderRegister() {
         if (result.success) {
             showToast('Registration successful! Please verify your email.', 'success');
             setTimeout(() => {
-                window.location.hash = '#/verify';
+                navigateTo('#/verify-email');
             }, 1000);
         } else {
             showToast(result.message, 'danger');
@@ -538,7 +504,7 @@ function renderVerify() {
     const unverifiedEmail = localStorage.getItem('unverified_email');
     
     if (!unverifiedEmail) {
-        window.location.hash = '#/';
+        navigateTo('#/');
         return;
     }
     
@@ -584,7 +550,7 @@ function simulateVerification() {
     if (result.success) {
         showToast('Email verified! You may now log in.', 'success');
         setTimeout(() => {
-            window.location.hash = '#/login';
+            navigateTo('#/login');
         }, 1500);
     } else {
         showToast(result.message, 'danger');
@@ -596,7 +562,7 @@ function renderProfile() {
     const user = getCurrentUser();
     
     if (!user) {
-        window.location.hash = '#/login';
+        navigateTo('#/login');
         return;
     }
     
@@ -735,13 +701,18 @@ function saveProfile() {
         localStorage.setItem('auth_token', email);
     }
     
+    // Refresh currentUser and update auth state after profile save
+    currentUser = getCurrentUser();
+    setAuthState(true, currentUser);
+
     showToast('Profile updated successfully!', 'success');
     bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
     renderProfile();
-    updateNavigation();
 }
 
-// Continue in next part...
+// ============================================
+// Requests
+// ============================================
 
 function renderRequests() {
     const content = document.getElementById('app-content');
@@ -786,9 +757,9 @@ function renderRequests() {
 let itemCounter = 0;
 
 function loadRequests() {
-    const currentUser = getCurrentUser();
+    const loggedInUser = getCurrentUser();
     const allRequests = getAll('requests');
-    const userRequests = allRequests.filter(req => req.employeeEmail === currentUser.email);
+    const userRequests = allRequests.filter(req => req.employeeEmail === loggedInUser.email);
 
     const noRequestsDiv = document.getElementById('noRequests');
     const requestsTable = document.getElementById('requestsTable');
@@ -920,12 +891,12 @@ function submitRequest() {
         return;
     }
 
-    const currentUser = getCurrentUser();
+    const loggedInUser = getCurrentUser();
     const newRequest = {
         type: type,
         items: items,
         status: 'Pending',
-        employeeEmail: currentUser.email,
+        employeeEmail: loggedInUser.email,
         date: new Date().toISOString(),
     };
 
@@ -981,6 +952,10 @@ function deleteRequest(id) {
     loadRequests();
 }
 
+// ============================================
+// Employees (guide: renderEmployeesTable as the list helper)
+// ============================================
+
 function renderEmployees() {
     const content = document.getElementById('app-content');
     
@@ -1012,10 +987,11 @@ function renderEmployees() {
         </div>
     `;
     
-    loadEmployees();
+    renderEmployeesTable();
 }
 
-function loadEmployees() {
+// Renamed from loadEmployees() → renderEmployeesTable() as required by guide
+function renderEmployeesTable() {
     const employees = getAll('employees');
     const accounts = getAll('accounts');
     const departments = getAll('departments');
@@ -1212,7 +1188,7 @@ function saveEmployee() {
     }
     
     bootstrap.Modal.getInstance(document.getElementById('employeeModal')).hide();
-    loadEmployees();
+    renderEmployeesTable();
 }
 
 function deleteEmployee(id) {
@@ -1220,8 +1196,12 @@ function deleteEmployee(id) {
     if (!confirm(`Are you sure you want to delete employee ${emp.employeeNumber}?`)) return;
     deleteItem('employees', id);
     showToast('Employee deleted successfully!', 'success');
-    loadEmployees();
+    renderEmployeesTable();
 }
+
+// ============================================
+// Accounts (guide: renderAccountsList as the list helper)
+// ============================================
 
 function renderAccounts() {
     const content = document.getElementById('app-content');
@@ -1253,13 +1233,14 @@ function renderAccounts() {
         </div>
     `;
     
-    loadAccounts();
+    renderAccountsList();
 }
 
-function loadAccounts() {
+// Renamed from loadAccounts() → renderAccountsList() as required by guide
+function renderAccountsList() {
     const accounts = getAll('accounts');
     const tbody = document.getElementById('accountsBody');
-    const currentUser = getCurrentUser();
+    const loggedInUser = getCurrentUser();
     
     if (accounts.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No accounts found</td></tr>';
@@ -1275,9 +1256,9 @@ function loadAccounts() {
             <td>
                 <div class="btn-group btn-group-sm">
                     <button class="btn btn-primary" onclick="editAccount(${account.id})"><i class="bi bi-pencil"></i> Edit</button>
-                    <button class="btn btn-warning" onclick="openResetPasswordModal(${account.id})"><i class="bi bi-key"></i> Reset</button>
-                    ${account.id !== currentUser.id ? 
-                        `<button class="btn btn-danger" onclick="deleteAccount(${account.id})"><i class="bi bi-trash"></i></button>` : 
+                    <button class="btn btn-warning" onclick="openResetPasswordModal(${account.id})"><i class="bi bi-key"></i> Reset Password</button>
+                    ${account.id !== loggedInUser.id ? 
+                        `<button class="btn btn-danger" onclick="deleteAccount(${account.id})"><i class="bi bi-trash"></i> Delete</button>` : 
                         '<button class="btn btn-outline-secondary" disabled title="Cannot delete yourself"><i class="bi bi-trash"></i></button>'
                     }
                 </div>
@@ -1438,7 +1419,7 @@ function saveAccount() {
     }
     
     bootstrap.Modal.getInstance(document.getElementById('accountModal')).hide();
-    loadAccounts();
+    renderAccountsList();
 }
 
 function openResetPasswordModal(id) {
@@ -1491,8 +1472,12 @@ function deleteAccount(id) {
     if (!confirm(`Are you sure you want to delete ${account.firstName} ${account.lastName}?`)) return;
     deleteItem('accounts', id);
     showToast('Account deleted successfully!', 'success');
-    loadAccounts();
+    renderAccountsList();
 }
+
+// ============================================
+// Departments
+// ============================================
 
 function renderDepartments() {
     const content = document.getElementById('app-content');
@@ -1670,17 +1655,68 @@ function deleteDepartment(id) {
 }
 
 // ============================================
+// Utility Functions
+// ============================================
+
+function showToast(message, type = 'info') {
+    const toastHtml = `
+        <div class="toast align-items-center text-white bg-${type} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    `;
+    
+    let container = document.querySelector('.toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'toast-container position-fixed top-0 end-0 p-3';
+        container.style.zIndex = '9999';
+        document.body.appendChild(container);
+    }
+    
+    container.insertAdjacentHTML('beforeend', toastHtml);
+    const toastElement = container.lastElementChild;
+    const toast = new bootstrap.Toast(toastElement);
+    toast.show();
+    
+    toastElement.addEventListener('hidden.bs.toast', function() {
+        toastElement.remove();
+    });
+}
+
+function isValidEmail(email) {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+    });
+}
+
+// ============================================
 // Initialize Application
 // ============================================
 
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize database
     initializeDatabase();
+
+    // If no hash is set, default to #/
+    if (!window.location.hash) {
+        window.location.hash = '#/';
+    }
     
     // Set up hash routing
     window.addEventListener('hashchange', handleRouting);
-    window.addEventListener('load', handleRouting);
     
-    // Initial routing
+    // Run routing on initial load
     handleRouting();
 });
